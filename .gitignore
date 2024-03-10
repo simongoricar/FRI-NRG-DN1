@@ -28,3 +28,4 @@ data/*.toml
 data/!*.TEMPLATE.toml
 
 logs
+data/input-files/*.splat
