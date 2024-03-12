@@ -5,14 +5,37 @@ use tracing::info;
 use crate::{
     cli::CLIArgs,
     configuration::Configuration,
+    drawing::WindowDrawingManager,
     logging::initialize_tracing,
+    renderer::SplatRenderer,
     splat_decoder::SplatFile,
 };
 
 mod cli;
 mod configuration;
+mod drawing;
 mod logging;
+mod renderer;
 mod splat_decoder;
+
+
+/***
+ * Compile-time configuration values
+ */
+
+/// Splats are parsed from raw data in parallel, resulting in a vector of splats that is non-deterministic.
+/// If you wish to manually reorder the splats back to their file order, specify this to be true.
+///
+/// If this is `false`, the program will not process the file deterministically.
+pub const REORDER_SPLATS_TO_FILE_ORDER: bool = true;
+
+pub const WINDOW_WIDTH: u32 = 720;
+pub const WINDOW_HEIGHT: u32 = 720;
+
+
+/***
+ * END OF compile-time configuration values
+ */
 
 fn main() -> Result<()> {
     let cli_args = CLIArgs::parse();
@@ -61,6 +84,13 @@ fn main() -> Result<()> {
         "First splat: {:?}",
         input_file_splats.splats.first().unwrap()
     );
+
+    let splat_renderer = SplatRenderer::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+    let drawing_manager = WindowDrawingManager::new(splat_renderer)
+        .wrap_err("Failed to initialize WindowDrawingManager.")?;
+
+    drawing_manager.run()?;
 
 
     drop(logging_raii_guard);
