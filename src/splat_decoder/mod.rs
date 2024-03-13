@@ -11,10 +11,10 @@ use crate::REORDER_SPLATS_TO_FILE_ORDER;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct SplatEntry {
-    position: Vector3<f32>,
-    scale: Vector3<f32>,
-    color: Vector4<u8>,
-    rotation: Vector4<f32>,
+    pub position: Vector3<f32>,
+    pub scale: Vector3<f32>,
+    pub color: Vector4<u8>,
+    pub rotation: Vector4<f32>,
 }
 
 impl SplatEntry {
@@ -63,10 +63,10 @@ impl SplatEntry {
             let third_raw = bytes.get_u8();
             let fourth_raw = bytes.get_u8();
 
-            let first_decoded = (first_raw - 128) as f32 / 128f32;
-            let second_decoded = (second_raw - 128) as f32 / 128f32;
-            let third_decoded = (third_raw - 128) as f32 / 128f32;
-            let fourth_decoded = (fourth_raw - 128) as f32 / 128f32;
+            let first_decoded = (first_raw as i32 - 128i32) as f32 / 128f32;
+            let second_decoded = (second_raw as i32 - 128i32) as f32 / 128f32;
+            let third_decoded = (third_raw as i32 - 128i32) as f32 / 128f32;
+            let fourth_decoded = (fourth_raw as i32 - 128i32) as f32 / 128f32;
 
             Vector4::new(
                 first_decoded,

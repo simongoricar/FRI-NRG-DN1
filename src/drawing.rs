@@ -9,7 +9,11 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::{renderer::PixelSurfaceRenderer, WINDOW_HEIGHT, WINDOW_WIDTH};
+use crate::{
+    renderer::{InteractiveRenderer, PixelSurfaceRenderer},
+    WINDOW_HEIGHT,
+    WINDOW_WIDTH,
+};
 
 
 enum InputAction {
@@ -18,10 +22,10 @@ enum InputAction {
 }
 
 
-fn handle_keyboard_input(event: KeyEvent) -> Result<InputAction> {
+fn handle_keyboard_input(event: &KeyEvent) -> Result<InputAction> {
     debug!("Got keyboard input event: {:?}", event);
 
-    let Key::Character(input_key) = event.logical_key else {
+    let Key::Character(input_key) = &event.logical_key else {
         return Ok(InputAction::Nothing);
     };
 
@@ -50,7 +54,7 @@ where
 
 pub struct WindowDrawingManager<R>
 where
-    R: PixelSurfaceRenderer,
+    R: PixelSurfaceRenderer + InteractiveRenderer,
 {
     event_loop: EventLoop<()>,
 
@@ -63,7 +67,7 @@ where
 
 impl<R> WindowDrawingManager<R>
 where
-    R: PixelSurfaceRenderer,
+    R: PixelSurfaceRenderer + InteractiveRenderer,
 {
     pub fn new(renderer: R) -> Result<Self> {
         let event_loop = EventLoop::new()
@@ -119,7 +123,7 @@ where
                         error!("{:?}", render_error);
                         return;
                     };
-                } else if let WindowEvent::KeyboardInput { event, .. } = event {
+                } else if let WindowEvent::KeyboardInput { event, .. } = &event {
                     let input_result = handle_keyboard_input(event);
 
                     match input_result {
@@ -135,6 +139,15 @@ where
                             return;
                         }
                     }
+                }
+
+                let renderer_input_handle_result = self.renderer.handle_window_event(&event);
+                if let Err(renderer_error) = renderer_input_handle_result {
+                    error!(
+                        "Renderer failed while processing window input: {:?}",
+                        renderer_error
+                    );
+                    return;
                 }
 
 

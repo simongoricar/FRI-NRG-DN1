@@ -85,7 +85,8 @@ fn main() -> Result<()> {
         input_file_splats.splats.first().unwrap()
     );
 
-    let splat_renderer = SplatRenderer::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+    let splat_renderer = SplatRenderer::new(WINDOW_WIDTH, WINDOW_HEIGHT, input_file_splats);
+    splat_renderer.render_in_place();
 
     let drawing_manager = WindowDrawingManager::new(splat_renderer)
         .wrap_err("Failed to initialize WindowDrawingManager.")?;
