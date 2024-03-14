@@ -1,11 +1,15 @@
-use std::time::Instant;
+use std::{iter::FusedIterator, time::Instant};
 
-use chrono::{DateTime, Local, Utc};
+use chrono::Local;
 use image::{ImageFormat, RgbaImage};
 use miette::Result;
-use nalgebra::{Isometry3, Matrix4, Orthographic3, Perspective3, Point3, Vector3, Vector4};
+use nalgebra::{Matrix4, Perspective3, Point3, Vector3, Vector4};
 use parking_lot::RwLock;
-use tracing::{debug, error, info};
+use rayon::{
+    iter::{IntoParallelRefIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
+use tracing::{debug, error, info, trace};
 use winit::{
     event::{ElementState, MouseButton, WindowEvent},
     keyboard::{Key, NamedKey},
@@ -21,6 +25,84 @@ pub trait PixelSurfaceRenderer {
     fn handle_window_event(&mut self, window_evnt: &WindowEvent) -> Result<()>;
 }
 
+
+#[inline]
+fn get_splat_distance_from_camera(camera_space_position: &Vector4<f32>) -> f32 {
+    camera_space_position.xyz().norm()
+}
+
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PixelPosition {
+    x: u32,
+    y: u32,
+}
+
+
+pub struct BillboardCoordinatesIterator {
+    x_start: u32,
+    x_stop: u32,
+    y_stop: u32,
+
+    next_x: u32,
+    next_y: u32,
+
+    finished: bool,
+}
+
+impl BillboardCoordinatesIterator {
+    pub fn from_center_and_size(center_pixel: (u32, u32), billboard_size_pixels: u32) -> Self {
+        let (center_x, center_y) = center_pixel;
+        let linear_distance = billboard_size_pixels.max(1).div_ceil(2);
+
+        let x_start = center_x - linear_distance;
+        let x_stop = center_x + linear_distance;
+
+        let y_start = center_y - linear_distance;
+        let y_stop = center_y + linear_distance;
+
+
+        Self {
+            x_start,
+            x_stop,
+            y_stop,
+            next_x: x_start,
+            next_y: y_start,
+            finished: false,
+        }
+    }
+}
+
+impl Iterator for BillboardCoordinatesIterator {
+    type Item = PixelPosition;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+
+        let (current_x, current_y) = (self.next_x, self.next_y);
+
+
+        self.next_x += 1;
+
+        if self.next_x > self.x_stop {
+            self.next_x = self.x_start;
+            self.next_y += 1;
+        }
+
+        if self.next_y > self.y_stop {
+            self.finished = true;
+        }
+
+        Some(PixelPosition {
+            x: current_x,
+            y: current_y,
+        })
+    }
+}
+
+impl FusedIterator for BillboardCoordinatesIterator {}
 
 
 #[inline]
@@ -140,21 +222,28 @@ pub struct SplatRenderer {
 
     splat_file: Splats,
 
+    splat_scaling_factor: f32,
+
     user_control: SplatRendererUserControlState,
 
     inner: RwLock<SplatRendererInner>,
 }
 
 impl SplatRenderer {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         configuration: Configuration,
         render_width: u32,
         render_height: u32,
         splat_file: Splats,
+        splat_scaling_factor: Option<f32>,
         initial_camera_position: Option<Point3<f32>>,
         initial_camera_look_target: Option<Point3<f32>>,
         initial_camera_up_vector: Option<Vector3<f32>>,
     ) -> Self {
+        let splat_scaling_factor = splat_scaling_factor.unwrap_or(2.0);
+        debug!("Splat scaling factor: {}", splat_scaling_factor);
+
         let camera_position = initial_camera_position.unwrap_or_else(|| Point3::new(3.0, 3.0, 3.0));
         debug!("Starting camera position: {:?}", camera_position);
 
@@ -203,6 +292,7 @@ impl SplatRenderer {
             render_width,
             render_height,
             splat_file,
+            splat_scaling_factor,
             user_control,
             inner,
         }
@@ -245,7 +335,7 @@ impl SplatRenderer {
             updated_up_vector
         );
 
-        let look_at_matrix = Isometry3::look_at_rh(
+        let look_at_matrix = Matrix4::<f32>::look_at_rh(
             &inner_locked.camera_position,
             &inner_locked.camera_look_target,
             &updated_up_vector,
@@ -260,63 +350,186 @@ impl SplatRenderer {
         );
 
 
-        debug!(
-            "Look at matrix:\n{:?}",
-            look_at_matrix.to_matrix()
-        );
+        debug!("Look at matrix:\n{:?}", look_at_matrix);
         debug!(
             "Projection matrix:\n{:?}",
             projection_matrix.as_matrix()
         );
 
-        // let projection_matrix = Orthographic3::new(10.0, 1.0, 20.0, 2.0, 1000.0, 0.1);
+
+        // let joint_matrix = projection_matrix.as_matrix() * look_at_matrix;
 
 
-        let joint_matrix = projection_matrix.as_matrix() * look_at_matrix.to_matrix();
+        // Project splats to camera space and order them back to front.
+        struct PreparedSplat {
+            pub distance_from_camera: f32,
+            pub center_pixel_in_viewport: (u32, u32),
+            pub billboard_size_in_pixels: u32,
+
+            pub scale: Vector3<f32>,
+            pub color: Vector4<u8>,
+            pub rotation: Vector4<f32>,
+        }
+
+
+        let time_prepare_splats_start = Instant::now();
+
+        let mut prepared_splats = self
+            .splat_file
+            .splats
+            .as_slice()
+            .par_iter()
+            .filter_map(|splat| {
+                let position_in_world_space = Vector4::new(
+                    splat.position.x,
+                    splat.position.y,
+                    splat.position.z,
+                    1f32,
+                );
+
+                println!(
+                    "Projecting splat at position {:?}",
+                    splat.position
+                );
+
+                let position_in_camera_space = look_at_matrix * position_in_world_space;
+                let position_in_clip_space =
+                    projection_matrix.as_matrix() * position_in_camera_space;
+
+                // let position_in_clip_space = joint_matrix * position_in_world_space;
+
+
+                let distance_from_camera = get_splat_distance_from_camera(&position_in_camera_space);
+                let billboard_size =
+                    (2.0 * self.splat_scaling_factor / distance_from_camera).round() as u32;
+
+
+                if let Some((render_center_x, render_center_y)) =
+                    get_pixel_coordinates_from_projected_coordinates(
+                        position_in_clip_space,
+                        self.render_width,
+                        self.render_height,
+                    )
+                {
+                    println!(
+                        "Splat is in the viewport at center {}x{} (has billboard size {}).",
+                        render_center_x, render_center_y, billboard_size
+                    );
+
+                    Some(PreparedSplat {
+                        distance_from_camera,
+                        center_pixel_in_viewport: (render_center_x, render_center_y),
+                        billboard_size_in_pixels: billboard_size,
+                        scale: splat.scale,
+                        color: splat.color,
+                        rotation: splat.rotation,
+                    })
+                } else {
+                    println!("Splat is not in the viewport.");
+
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        debug!(
+            "Preparing splats took {} milliseconds.",
+            (time_prepare_splats_start.elapsed().as_secs_f64() * 1000.0).round() as u32
+        );
+
+
+
+        let time_prepared_splat_sort_start = Instant::now();
+
+        prepared_splats
+            .as_mut_slice()
+            .par_sort_unstable_by(|first, second| {
+                first
+                    .distance_from_camera
+                    .total_cmp(&second.distance_from_camera)
+                    .reverse()
+            });
+
+        debug!(
+            "Sorting prepared splats by depth took {} milliseconds.",
+            (time_prepared_splat_sort_start.elapsed().as_secs_f64() * 1000.0).round() as u32
+        );
+
+
+
+        trace!(
+            "Distance of first ordered splat: {}",
+            prepared_splats.first().unwrap().distance_from_camera
+        );
+        trace!(
+            "Distance of last ordered splat: {}",
+            prepared_splats.last().unwrap().distance_from_camera
+        );
+
 
 
         // Reset canvas.
-        for some_pixel_component in inner_locked.frame.iter_mut() {
-            *some_pixel_component = 0;
+        let time_canvas_reset_start = Instant::now();
+
+        for pixel in inner_locked.frame.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&[0, 0, 0, 255]);
         }
 
-        // Draw to canvas.
-        for splat in self.splat_file.splats.iter() {
-            let position_in_world_space = Vector4::new(
-                splat.position.x,
-                splat.position.y,
-                splat.position.z,
-                1f32,
-            );
+        debug!(
+            "Resetting the canvas took {} milliseconds.",
+            (time_canvas_reset_start.elapsed().as_secs_f64() * 1000.0).round() as u32
+        );
 
-            // let position_in_camera_space = look_at_matrix * position_in_world_space;
-            // let position_in_clip_space = projection_matrix.as_matrix() * position_in_camera_space;
 
-            println!(
-                "Projecting splat at position {:?}",
-                splat.position
-            );
+        // Splats have been prepared and ordered back to front, render them.
+        let time_compositing_start = Instant::now();
 
-            let position_in_clip_space = joint_matrix * position_in_world_space;
+        for prepared_splat in prepared_splats {
+            let billboard_pixel_iterator = BillboardCoordinatesIterator::from_center_and_size(
+                prepared_splat.center_pixel_in_viewport,
+                prepared_splat.billboard_size_in_pixels,
+            )
+            .fuse();
 
-            if let Some((render_x, render_y)) = get_pixel_coordinates_from_projected_coordinates(
-                position_in_clip_space,
-                self.render_width,
-                self.render_height,
-            ) {
-                let pixel_index = ((render_y * self.render_width + render_x) * 4) as usize;
+            for pixel in billboard_pixel_iterator {
+                let pixel_index = ((pixel.y * self.render_width + pixel.x) * 4) as usize;
 
-                println!(
-                    "Splat is in the viewport at {}x{}, which is index {}.",
-                    render_x, render_y, pixel_index
+                let existing_pixel_r = inner_locked.frame[pixel_index];
+                let existing_pixel_g = inner_locked.frame[pixel_index + 1];
+                let existing_pixel_b = inner_locked.frame[pixel_index + 2];
+
+
+                let existing_rgb = Vector3::new(
+                    (existing_pixel_r as f32) / (u8::MAX as f32),
+                    (existing_pixel_g as f32) / (u8::MAX as f32),
+                    (existing_pixel_b as f32) / (u8::MAX as f32),
+                );
+                let splat_rgb = Vector3::new(
+                    (prepared_splat.color.x as f32) / (u8::MAX as f32),
+                    (prepared_splat.color.y as f32) / (u8::MAX as f32),
+                    (prepared_splat.color.z as f32) / (u8::MAX as f32),
                 );
 
-                inner_locked.frame.as_mut_slice()[pixel_index..pixel_index + 4]
-                    .copy_from_slice(splat.color.as_slice());
-            } else {
-                println!("Splat is not in the viewport.");
+
+                let splat_alpha = (prepared_splat.color.w as f32) / (u8::MAX as f32);
+                let splat_inverted_alpha = 1.0 - splat_alpha;
+
+                let final_rgb_f32 = splat_inverted_alpha * existing_rgb + splat_alpha * splat_rgb;
+
+                let final_rgb_u8 = [
+                    (final_rgb_f32.x * (u8::MAX as f32)).round() as u8,
+                    (final_rgb_f32.y * (u8::MAX as f32)).round() as u8,
+                    (final_rgb_f32.z * (u8::MAX as f32)).round() as u8,
+                ];
+
+                inner_locked.frame[pixel_index..pixel_index + 3].copy_from_slice(&final_rgb_u8);
             }
         }
+
+        debug!(
+            "Compositing the splats took {} milliseconds.",
+            (time_compositing_start.elapsed().as_secs_f64() * 1000.0).round() as u32
+        );
 
         inner_locked.pending_rerender = false;
     }
@@ -363,12 +576,12 @@ impl SplatRenderer {
 
         if let Err(save_error) = save_result {
             error!(
-                "Failed to asve screenshot: erorred while saving as PNG: {:?}",
+                "Failed to save screenshot: erorred while saving as PNG: {:?}",
                 save_error
             );
         }
 
-        info!("Screenshot save to disk as {}.", screenshot_name);
+        info!("Screenshot saved to disk as {}.", screenshot_name);
     }
 }
 

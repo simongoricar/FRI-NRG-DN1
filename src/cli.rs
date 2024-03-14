@@ -27,6 +27,13 @@ pub struct CLIArgs {
     pub input_file_path: PathBuf,
 
     #[arg(
+        short = 's',
+        long = "splat-scaling-factor",
+        help = "Splat perspective closeness scaling factor, defaults to 2.0."
+    )]
+    pub splat_scaling_factor: Option<f32>,
+
+    #[arg(
         long = "camera-position",
         help = "Initial camera position (world space). Format: \"x,y,z\". \
                 If unspecified, this will default to (3,3,3)."
