@@ -10,15 +10,29 @@ use crate::REORDER_SPLATS_TO_FILE_ORDER;
 
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct SplatEntry {
+pub struct Splat {
     pub position: Vector3<f32>,
     pub scale: Vector3<f32>,
     pub color: Vector4<u8>,
     pub rotation: Vector4<f32>,
 }
 
-impl SplatEntry {
-    fn from_raw_splat_data(mut bytes: Bytes) -> Result<Self> {
+impl Splat {
+    pub fn new(
+        position: Vector3<f32>,
+        scale: Vector3<f32>,
+        color: Vector4<u8>,
+        rotation: Vector4<f32>,
+    ) -> Self {
+        Self {
+            position,
+            scale,
+            color,
+            rotation,
+        }
+    }
+
+    fn from_raw_splat_file_data(mut bytes: Bytes) -> Result<Self> {
         // Structure is 32 bytes big:
         // - position (3x f32)
         // - scale (3x f32)
@@ -88,11 +102,15 @@ impl SplatEntry {
 
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct SplatFile {
-    pub splats: Vec<SplatEntry>,
+pub struct Splats {
+    pub splats: Vec<Splat>,
 }
 
-impl SplatFile {
+impl Splats {
+    pub fn from_entries(splats: Vec<Splat>) -> Self {
+        Self { splats }
+    }
+
     pub fn load_from_file<P>(input_file_path: P) -> Result<Self>
     where
         P: AsRef<Path>,
@@ -128,7 +146,7 @@ impl SplatFile {
                 .enumerate()
                 .par_bridge()
                 .map(|(chunk_index, chunk)| {
-                    let splat = SplatEntry::from_raw_splat_data(Bytes::copy_from_slice(chunk))?;
+                    let splat = Splat::from_raw_splat_file_data(Bytes::copy_from_slice(chunk))?;
 
                     Ok((chunk_index, splat))
                 })
@@ -161,7 +179,7 @@ impl SplatFile {
             let parsed_splats = file_contents
                 .chunks(32)
                 .par_bridge()
-                .map(|chunk| SplatEntry::from_raw_splat_data(Bytes::copy_from_slice(chunk)))
+                .map(|chunk| Splat::from_raw_splat_file_data(Bytes::copy_from_slice(chunk)))
                 .collect::<Result<Vec<_>>>()?;
 
             trace!(

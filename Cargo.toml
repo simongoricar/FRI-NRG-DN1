@@ -19,11 +19,15 @@ tracing-appender = "0.2.3"
 
 bytes = "1.5.0"
 
+chrono = "0.4.35"
+
 nalgebra = "0.32.4"
 
 dunce = "1.0.4"
 
 rayon = "1.9.0"
+parking_lot = "0.12.1"
 
 winit = { version = "0.29.14", features = ["rwh_05"] }
 pixels = "0.13.0"
+image = { version = "0.25.0", default-features = false, features = ["rayon", "png", "jpeg"] }

@@ -25,4 +25,25 @@ pub struct CLIArgs {
 
     #[arg(short = 'i', long = "input-file-path")]
     pub input_file_path: PathBuf,
+
+    #[arg(
+        long = "camera-position",
+        help = "Initial camera position (world space). Format: \"x,y,z\". \
+                If unspecified, this will default to (3,3,3)."
+    )]
+    pub camera_position: Option<String>,
+
+    #[arg(
+        long = "camera-look-target",
+        help = "Initial camera look target position (world space). Format: \"x,y,z\". \
+                If unspecified, this will default to the average splat position."
+    )]
+    pub camera_look_target: Option<String>,
+
+    #[arg(
+        long = "initial-up-vector",
+        help = "Initial up vector for the camera perspective projection. Format: \"x,y,z\". \
+                If unspecified, this will default to (0,1,0)."
+    )]
+    pub initial_up_vector: Option<String>,
 }

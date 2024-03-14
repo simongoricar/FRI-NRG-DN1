@@ -1,18 +1,21 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub use base_paths::BasePathsConfiguration;
-use base_paths::UnresolvedBasePathsConfiguration;
-pub use logging::LoggingConfiguration;
-use logging::UnresolvedLoggingConfiguration;
 use miette::{Context, IntoDiagnostic, Result};
 use serde::Deserialize;
 
+pub use self::base_paths::BasePathsConfiguration;
+use self::base_paths::UnresolvedBasePathsConfiguration;
+pub use self::logging::LoggingConfiguration;
+use self::logging::UnresolvedLoggingConfiguration;
+pub use self::screenshot::ScreenshotConfiguration;
+use self::screenshot::UnresolvedScreenshotConfiguration;
 use super::traits::{ResolvableConfiguration, ResolvableConfigurationWithContext};
 use super::utilities::get_default_configuration_file_path;
 
 mod base_paths;
 mod logging;
+mod screenshot;
 
 
 
@@ -23,6 +26,9 @@ pub(crate) struct UnresolvedConfiguration {
 
     /// Logging-related configuration.
     logging: UnresolvedLoggingConfiguration,
+
+    /// Screenshotting configuration.
+    screenshot: UnresolvedScreenshotConfiguration,
 }
 
 
@@ -37,6 +43,9 @@ pub struct Configuration {
 
     /// Logging-related configuration.
     pub logging: LoggingConfiguration,
+
+    /// Screenshotting configuration.
+    pub screenshot: ScreenshotConfiguration,
 }
 
 
@@ -55,11 +64,17 @@ impl ResolvableConfigurationWithContext for UnresolvedConfiguration {
             .resolve(base_paths.clone())
             .wrap_err("Failed to resolve logging table.")?;
 
+        let screenshot = self
+            .screenshot
+            .resolve(base_paths.clone())
+            .wrap_err("Failed ot resolve screenshot table.")?;
+
 
         Ok(Configuration {
             base_paths,
             file_path: context,
             logging,
+            screenshot,
         })
     }
 }

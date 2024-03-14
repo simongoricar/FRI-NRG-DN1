@@ -27,6 +27,7 @@ data/*.log
 data/*.toml
 data/!*.TEMPLATE.toml
 
-logs
-data/input-files/*.splat
+nrg-dn1.log.*
+*.splat
 *.pdf
+*.png

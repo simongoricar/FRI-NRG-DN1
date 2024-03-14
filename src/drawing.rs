@@ -1,6 +1,6 @@
 use miette::{Context, IntoDiagnostic, Result};
 use pixels::{Pixels, SurfaceTexture};
-use tracing::{debug, error, info};
+use tracing::{error, info, trace};
 use winit::{
     dpi::LogicalSize,
     event::{Event, KeyEvent, WindowEvent},
@@ -10,7 +10,8 @@ use winit::{
 };
 
 use crate::{
-    renderer::{InteractiveRenderer, PixelSurfaceRenderer},
+    configuration::Configuration,
+    renderer::PixelSurfaceRenderer,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
 };
@@ -23,7 +24,7 @@ enum InputAction {
 
 
 fn handle_keyboard_input(event: &KeyEvent) -> Result<InputAction> {
-    debug!("Got keyboard input event: {:?}", event);
+    trace!("Got keyboard input event: {:?}", event);
 
     let Key::Character(input_key) = &event.logical_key else {
         return Ok(InputAction::Nothing);
@@ -54,7 +55,7 @@ where
 
 pub struct WindowDrawingManager<R>
 where
-    R: PixelSurfaceRenderer + InteractiveRenderer,
+    R: PixelSurfaceRenderer,
 {
     event_loop: EventLoop<()>,
 
@@ -67,7 +68,7 @@ where
 
 impl<R> WindowDrawingManager<R>
 where
-    R: PixelSurfaceRenderer + InteractiveRenderer,
+    R: PixelSurfaceRenderer,
 {
     pub fn new(renderer: R) -> Result<Self> {
         let event_loop = EventLoop::new()
