@@ -399,7 +399,7 @@ impl SplatRenderer {
                 // let position_in_clip_space = joint_matrix * position_in_world_space;
 
 
-                let distance_from_camera = get_splat_distance_from_camera(&position_in_camera_space);
+                let distance_from_camera = get_splat_distance_from_camera(&position_in_clip_space);
                 let billboard_size =
                     (2.0 * self.splat_scaling_factor / distance_from_camera).round() as u32;
 
