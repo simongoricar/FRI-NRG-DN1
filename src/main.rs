@@ -126,51 +126,51 @@ fn main() -> Result<()> {
 
     // TODO
 
-    // let input_file_splats =
-    //     SplatFile::load_from_file(&cli_args.input_file_path).wrap_err_with(|| {
-    //         miette!(
-    //             "Failed to load input file: {}.",
-    //             cli_args.input_file_path.display()
-    //         )
-    //     })?;
+    let input_file_splats =
+        Splats::load_from_file(&cli_args.input_file_path).wrap_err_with(|| {
+            miette!(
+                "Failed to load input file: {}.",
+                cli_args.input_file_path.display()
+            )
+        })?;
     //
     // println!(
     //     "First splat: {:?}",
     //     input_file_splats.splats.first().unwrap()
     // );
 
-    let input_file_splats = Splats::from_entries(vec![
-        Splat::new(
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(1.0, 1.0, 1.0),
-            Vector4::new(244, 130, 80, 220),
-            Vector4::new(0.0, 0.0, 0.0, 0.0),
-        ),
-        Splat::new(
-            Vector3::new(0.1, 0.0, 0.0),
-            Vector3::new(1.0, 1.0, 1.0),
-            Vector4::new(200, 22, 1, 123),
-            Vector4::new(0.0, 0.0, 0.0, 0.0),
-        ),
-        Splat::new(
-            Vector3::new(0.0, 0.1, 0.0),
-            Vector3::new(1.0, 1.0, 1.0),
-            Vector4::new(200, 255, 255, 22),
-            Vector4::new(0.0, 0.0, 0.0, 0.0),
-        ),
-        Splat::new(
-            Vector3::new(0.0, 0.0, 0.1),
-            Vector3::new(1.0, 1.0, 1.0),
-            Vector4::new(22, 255, 255, 90),
-            Vector4::new(0.0, 0.0, 0.0, 0.0),
-        ),
-        Splat::new(
-            Vector3::new(0.0, -0.1, 0.0),
-            Vector3::new(1.0, 1.0, 1.0),
-            Vector4::new(22, 2, 255, 100),
-            Vector4::new(0.0, 0.0, 0.0, 0.0),
-        ),
-    ]);
+    // let input_file_splats = Splats::from_entries(vec![
+    //     Splat::new(
+    //         Vector3::new(0.0, 0.0, 0.0),
+    //         Vector3::new(1.0, 1.0, 1.0),
+    //         Vector4::new(244, 130, 80, 220),
+    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
+    //     ),
+    //     Splat::new(
+    //         Vector3::new(0.1, 0.0, 0.0),
+    //         Vector3::new(1.0, 1.0, 1.0),
+    //         Vector4::new(200, 22, 1, 123),
+    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
+    //     ),
+    //     Splat::new(
+    //         Vector3::new(0.0, 0.1, 0.0),
+    //         Vector3::new(1.0, 1.0, 1.0),
+    //         Vector4::new(200, 255, 255, 22),
+    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
+    //     ),
+    //     Splat::new(
+    //         Vector3::new(0.0, 0.0, 0.1),
+    //         Vector3::new(1.0, 1.0, 1.0),
+    //         Vector4::new(22, 255, 255, 90),
+    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
+    //     ),
+    //     Splat::new(
+    //         Vector3::new(0.0, -0.1, 0.0),
+    //         Vector3::new(1.0, 1.0, 1.0),
+    //         Vector4::new(22, 2, 255, 100),
+    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
+    //     ),
+    // ]);
 
 
     let initial_camera_position = match cli_args.camera_position.as_ref() {

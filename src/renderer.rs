@@ -44,6 +44,9 @@ pub struct BillboardCoordinatesIterator {
     x_stop: u32,
     y_stop: u32,
 
+    x_max: u32,
+    y_max: u32,
+
     next_x: u32,
     next_y: u32,
 
@@ -51,21 +54,28 @@ pub struct BillboardCoordinatesIterator {
 }
 
 impl BillboardCoordinatesIterator {
-    pub fn from_center_and_size(center_pixel: (u32, u32), billboard_size_pixels: u32) -> Self {
+    pub fn from_center_and_size(
+        viewport_size: (u32, u32),
+        center_pixel: (u32, u32),
+        billboard_size_pixels: u32,
+    ) -> Self {
+        let (viewport_width, viewport_height) = viewport_size;
         let (center_x, center_y) = center_pixel;
         let linear_distance = billboard_size_pixels.max(1).div_ceil(2);
 
-        let x_start = center_x - linear_distance;
-        let x_stop = center_x + linear_distance;
+        let x_start = center_x.saturating_sub(linear_distance);
+        let x_stop = center_x.saturating_add(linear_distance);
 
-        let y_start = center_y - linear_distance;
-        let y_stop = center_y + linear_distance;
+        let y_start = center_y.saturating_sub(linear_distance);
+        let y_stop = center_y.saturating_add(linear_distance);
 
 
         Self {
             x_start,
             x_stop,
             y_stop,
+            x_max: viewport_width - 1,
+            y_max: viewport_height - 1,
             next_x: x_start,
             next_y: y_start,
             finished: false,
@@ -86,12 +96,12 @@ impl Iterator for BillboardCoordinatesIterator {
 
         self.next_x += 1;
 
-        if self.next_x > self.x_stop {
+        if self.next_x > self.x_stop || self.next_x > self.x_max {
             self.next_x = self.x_start;
             self.next_y += 1;
         }
 
-        if self.next_y > self.y_stop {
+        if self.next_y > self.y_stop || self.next_y > self.y_max {
             self.finished = true;
         }
 
@@ -118,17 +128,17 @@ fn get_pixel_coordinates_from_projected_coordinates(
     let mut projected_z = *projected_position.get(2).unwrap();
     let projected_w = *projected_position.get(3).unwrap();
 
-    projected_x /= 1f32 / projected_w;
-    projected_y /= 1f32 / projected_w;
-    projected_z /= 1f32 / projected_w;
+    projected_x *= 1f32 / projected_w;
+    projected_y *= 1f32 / projected_w;
+    projected_z *= 1f32 / projected_w;
 
     // debug!(
     //     "After /= with w: {},{},{},{}",
     //     projected_x, projected_y, projected_z, projected_w
     // );
 
-    projected_x /= 1f32 / projected_z;
-    projected_y /= 1f32 / projected_z;
+    projected_x *= 1f32 / projected_z;
+    projected_y *= 1f32 / projected_z;
 
 
     if !(-1.0..=1.0).contains(&projected_x) {
@@ -366,8 +376,12 @@ impl SplatRenderer {
             pub center_pixel_in_viewport: (u32, u32),
             pub billboard_size_in_pixels: u32,
 
+            #[allow(dead_code)]
             pub scale: Vector3<f32>,
+
             pub color: Vector4<u8>,
+
+            #[allow(dead_code)]
             pub rotation: Vector4<f32>,
         }
 
@@ -387,10 +401,10 @@ impl SplatRenderer {
                     1f32,
                 );
 
-                println!(
-                    "Projecting splat at position {:?}",
-                    splat.position
-                );
+                // println!(
+                //     "Projecting splat at position {:?}",
+                //     splat.position
+                // );
 
                 let position_in_camera_space = look_at_matrix * position_in_world_space;
                 let position_in_clip_space =
@@ -404,6 +418,13 @@ impl SplatRenderer {
                     (2.0 * self.splat_scaling_factor / distance_from_camera).round() as u32;
 
 
+                // println!(
+                //     " -> in camera space: {:?}\n -> in clip space: {:?}\n -> distance from camera: {}",
+                //     position_in_camera_space,
+                //     position_in_clip_space,
+                //     distance_from_camera
+                // );
+
                 if let Some((render_center_x, render_center_y)) =
                     get_pixel_coordinates_from_projected_coordinates(
                         position_in_clip_space,
@@ -411,10 +432,10 @@ impl SplatRenderer {
                         self.render_height,
                     )
                 {
-                    println!(
-                        "Splat is in the viewport at center {}x{} (has billboard size {}).",
-                        render_center_x, render_center_y, billboard_size
-                    );
+                    // println!(
+                    //     "Splat is in the viewport at center {}x{} (has billboard size {}).",
+                    //     render_center_x, render_center_y, billboard_size
+                    // );
 
                     Some(PreparedSplat {
                         distance_from_camera,
@@ -425,7 +446,7 @@ impl SplatRenderer {
                         rotation: splat.rotation,
                     })
                 } else {
-                    println!("Splat is not in the viewport.");
+                    // println!("Splat is not in the viewport.");
 
                     None
                 }
@@ -486,6 +507,7 @@ impl SplatRenderer {
 
         for prepared_splat in prepared_splats {
             let billboard_pixel_iterator = BillboardCoordinatesIterator::from_center_and_size(
+                (self.render_width, self.render_height),
                 prepared_splat.center_pixel_in_viewport,
                 prepared_splat.billboard_size_in_pixels,
             )
@@ -493,6 +515,20 @@ impl SplatRenderer {
 
             for pixel in billboard_pixel_iterator {
                 let pixel_index = ((pixel.y * self.render_width + pixel.x) * 4) as usize;
+
+                if pixel_index > (inner_locked.frame.len() - 1) {
+                    panic!(
+                        "Invalid pixel_index: got {} (from x={}, y={}), but array length is {}.\n\
+                        Context: render center ({},{}), billboard width {}",
+                        pixel_index,
+                        pixel.x,
+                        pixel.y,
+                        inner_locked.frame.len(),
+                        prepared_splat.center_pixel_in_viewport.0,
+                        prepared_splat.center_pixel_in_viewport.1,
+                        prepared_splat.billboard_size_in_pixels
+                    );
+                }
 
                 let existing_pixel_r = inner_locked.frame[pixel_index];
                 let existing_pixel_g = inner_locked.frame[pixel_index + 1];

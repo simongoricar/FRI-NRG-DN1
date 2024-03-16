@@ -111,6 +111,7 @@ impl Splats {
         Self { splats }
     }
 
+    #[allow(dead_code)]
     pub fn load_from_file<P>(input_file_path: P) -> Result<Self>
     where
         P: AsRef<Path>,

@@ -9,12 +9,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::{
-    configuration::Configuration,
-    renderer::PixelSurfaceRenderer,
-    WINDOW_HEIGHT,
-    WINDOW_WIDTH,
-};
+use crate::{renderer::PixelSurfaceRenderer, WINDOW_HEIGHT, WINDOW_WIDTH};
 
 
 enum InputAction {
