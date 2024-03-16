@@ -107,7 +107,7 @@ pub struct Splats {
 }
 
 impl Splats {
-    pub fn from_entries(splats: Vec<Splat>) -> Self {
+    pub const fn from_entries(splats: Vec<Splat>) -> Self {
         Self { splats }
     }
 

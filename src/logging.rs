@@ -20,7 +20,7 @@ use tracing_subscriber::{
 /// The `log_file_directory_path` should point to a directory in which the log files should be stored.
 /// The log files themselves will automatically roll over daily.
 ///
-/// # Return value ([`WorkerGuard`]) obligations
+/// # Return value obligations
 /// **The caller must ensure that the returned [`WorkerGuard`]
 /// is not dropped until the end of the program.
 /// After the guard is dropped, the log file will not be written to.**

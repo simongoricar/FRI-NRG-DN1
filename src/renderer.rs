@@ -10,6 +10,7 @@ use rayon::{
     slice::ParallelSliceMut,
 };
 use tracing::{debug, error, info, trace};
+#[cfg(feature = "ui")]
 use winit::{
     event::{ElementState, MouseButton, WindowEvent},
     keyboard::{Key, NamedKey},
@@ -20,9 +21,15 @@ use crate::{
     splat_decoder::{Splat, Splats},
 };
 
+
 pub trait PixelSurfaceRenderer {
     fn draw(&self, frame: &mut [u8]);
-    fn handle_window_event(&mut self, window_evnt: &WindowEvent) -> Result<()>;
+}
+
+
+#[cfg(feature = "ui")]
+pub trait InteractiveRenderer {
+    fn handle_window_event(&mut self, window_event: &WindowEvent) -> Result<()>;
 }
 
 
@@ -570,15 +577,14 @@ impl SplatRenderer {
         inner_locked.pending_rerender = false;
     }
 
-    fn save_screenshot_to_disk(&self) {
+    pub fn save_screenshot_to_disk(&self) {
         let screenshot_time_string = Local::now().format("%Y-%m-%d_%H-%M-%S-%3f");
         let screenshot_name = format!("nrg-screenshot_{}.png", screenshot_time_string);
 
         let full_screenshot_path = self
             .configuration
             .screenshot
-            .screenshot_directory_path
-            .join(&screenshot_name);
+            .screenshot_path(&screenshot_name);
 
 
         let buffer_as_image = {
@@ -646,7 +652,10 @@ impl PixelSurfaceRenderer for SplatRenderer {
         //      pixel.copy_from_slice(&[133, 255, 211, 255]);
         // }
     }
+}
 
+#[cfg(feature = "ui")]
+impl InteractiveRenderer for SplatRenderer {
     fn handle_window_event(&mut self, window_event: &WindowEvent) -> Result<()> {
         const MOVE_CAMERA_BY: f32 = 0.1;
 

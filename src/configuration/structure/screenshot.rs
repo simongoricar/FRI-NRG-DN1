@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use miette::{miette, Context, IntoDiagnostic, Result};
 use serde::Deserialize;
 
 use super::BasePathsConfiguration;
@@ -34,5 +35,25 @@ impl ResolvableConfigurationWithContext for UnresolvedScreenshotConfiguration {
         Ok(Self::Resolved {
             screenshot_directory_path,
         })
+    }
+}
+
+impl ScreenshotConfiguration {
+    /// Creates the screenshot directory if it does not already exist.
+    pub fn create_screenshot_directory_if_not_exists(&self) -> Result<()> {
+        std::fs::create_dir_all(&self.screenshot_directory_path)
+            .into_diagnostic()
+            .wrap_err_with(|| {
+                miette!(
+                    "Failed to create missing screenshot directory at {}.",
+                    self.screenshot_directory_path.display()
+                )
+            })
+    }
+
+    /// Returns a full screenshot path by joining the screenshot directory
+    /// and `screenshot_file_name`.
+    pub fn screenshot_path(&self, screenshot_file_name: &str) -> PathBuf {
+        self.screenshot_directory_path.join(screenshot_file_name)
     }
 }

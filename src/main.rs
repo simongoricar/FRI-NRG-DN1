@@ -1,12 +1,11 @@
 use clap::Parser;
-use miette::{miette, Context, IntoDiagnostic, Result};
-use nalgebra::{Point3, Vector3, Vector4};
+use miette::{miette, Context, Result};
+use nalgebra::{Vector3, Vector4};
 use tracing::info;
 
 use crate::{
-    cli::CLIArgs,
+    cli::{parse_str_as_point3, parse_str_as_vector3, CLIArgs},
     configuration::Configuration,
-    drawing::WindowDrawingManager,
     logging::initialize_tracing,
     renderer::SplatRenderer,
     splat_decoder::{Splat, Splats},
@@ -14,76 +13,86 @@ use crate::{
 
 mod cli;
 mod configuration;
-mod drawing;
 mod logging;
 mod renderer;
 mod splat_decoder;
+
+#[cfg(feature = "ui")]
+mod drawing;
+
+
+/// Splats are parsed from raw data in parallel, resulting in a vector of splats that is non-deterministic.
+/// If you wish to manually reorder the splats back to their file order, specify this to be true.
+///
+/// If this is `false`, the program will not process the file deterministically.
+///
+/// **This is enabled on debug builds and disabled in release builds.**
+#[cfg(debug_assertions)]
+pub const REORDER_SPLATS_TO_FILE_ORDER: bool = true;
+
+#[cfg(not(debug_assertions))]
+pub const REORDER_SPLATS_TO_FILE_ORDER: bool = false;
 
 
 /***
  * Compile-time configuration values
  */
 
-/// Splats are parsed from raw data in parallel, resulting in a vector of splats that is non-deterministic.
-/// If you wish to manually reorder the splats back to their file order, specify this to be true.
-///
-/// If this is `false`, the program will not process the file deterministically.
-pub const REORDER_SPLATS_TO_FILE_ORDER: bool = true;
-
-pub const WINDOW_WIDTH: u32 = 720;
-pub const WINDOW_HEIGHT: u32 = 720;
+pub const DEFAULT_WINDOW_WIDTH: u32 = 720;
+pub const DEFAULT_WINDOW_HEIGHT: u32 = 720;
 
 
 /***
  * END OF compile-time configuration values
  */
 
-fn parse_str_as_three_f32_points(value: &str) -> Result<(f32, f32, f32)> {
-    let value = value.replace(['(', ')'], "");
-    let components = value.splitn(3, ',').collect::<Vec<_>>();
-
-    if components.len() != 3 {
-        return Err(miette!(
-            "Failed to decode string to Point3<f32>: expected format (x,y,z), got {}.",
-            value
-        ));
-    }
 
 
-    let x_value = components[0].parse::<f32>()
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Failed to decode string to Point3<f32>: expected x coordinate to be valid f32, found {}.", components[0]))?;
-
-    let y_value = components[1].parse::<f32>()
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Failed to decode string to Point3<f32>: expected y coordinate to be valid f32, found {}.", components[1]))?;
-
-    let z_value = components[2].parse::<f32>()
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Failed to decode string to Point3<f32>: expected z coordinate to be valid f32, found {}.", components[2]))?;
-
-
-    Ok((x_value, y_value, z_value))
+/// Construct and return [`Splats`] containing a simple 5-point splatting testing scene.
+pub fn get_testing_splat_scene() -> Splats {
+    Splats::from_entries(vec![
+        Splat::new(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector4::new(244, 130, 80, 220),
+            Vector4::new(0.0, 0.0, 0.0, 0.0),
+        ),
+        Splat::new(
+            Vector3::new(0.1, 0.0, 0.0),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector4::new(200, 22, 1, 123),
+            Vector4::new(0.0, 0.0, 0.0, 0.0),
+        ),
+        Splat::new(
+            Vector3::new(0.0, 0.1, 0.0),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector4::new(200, 255, 255, 22),
+            Vector4::new(0.0, 0.0, 0.0, 0.0),
+        ),
+        Splat::new(
+            Vector3::new(0.0, 0.0, 0.1),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector4::new(22, 255, 255, 90),
+            Vector4::new(0.0, 0.0, 0.0, 0.0),
+        ),
+        Splat::new(
+            Vector3::new(0.0, -0.1, 0.0),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector4::new(22, 2, 255, 100),
+            Vector4::new(0.0, 0.0, 0.0, 0.0),
+        ),
+    ])
 }
 
 
-#[inline]
-fn parse_str_as_point3(value: &str) -> Result<Point3<f32>> {
-    let (x, y, z) = parse_str_as_three_f32_points(value)?;
-    Ok(Point3::new(x, y, z))
-}
-
-#[inline]
-fn parse_str_as_vector3(value: &str) -> Result<Vector3<f32>> {
-    let (x, y, z) = parse_str_as_three_f32_points(value)?;
-    Ok(Vector3::new(x, y, z))
-}
 
 
 fn main() -> Result<()> {
+    // Parse command-line arguments.
     let cli_args = CLIArgs::parse();
 
-    // Load configuration.
+
+    // Parse configuration file.
     let configuration = match cli_args.configuration_file_path.as_ref() {
         Some(path) => {
             println!("Loading configuration: {}", path.display());
@@ -97,20 +106,13 @@ fn main() -> Result<()> {
     .wrap_err("Failed to load configuration file.")?;
 
     println!(
-        "Configuration loaded: {}.",
+        "Configuration loaded from \"{}\".",
         configuration.file_path.display()
     );
 
-    if !configuration.screenshot.screenshot_directory_path.exists() {
-        std::fs::create_dir_all(&configuration.screenshot.screenshot_directory_path)
-            .into_diagnostic()
-            .wrap_err_with(|| {
-                miette!(
-                    "Failed to create missing screenshot directory at {}.",
-                    configuration.screenshot.screenshot_directory_path.display()
-                )
-            })?;
-    }
+    configuration
+        .screenshot
+        .create_screenshot_directory_if_not_exists()?;
 
 
     let logging_raii_guard = initialize_tracing(
@@ -124,55 +126,20 @@ fn main() -> Result<()> {
     info!("Tracing initialized.");
 
 
-    // TODO
 
-    let input_file_splats =
-        Splats::load_from_file(&cli_args.input_file_path).wrap_err_with(|| {
+    // Load splat data from file if provided, otherwise use the testing scene.
+    let splat_data = match cli_args.input_file_path.as_ref() {
+        Some(splat_file_path) => Splats::load_from_file(splat_file_path).wrap_err_with(|| {
             miette!(
-                "Failed to load input file: {}.",
-                cli_args.input_file_path.display()
+                "Failed to load splat input file: {}",
+                splat_file_path.display()
             )
-        })?;
-    //
-    // println!(
-    //     "First splat: {:?}",
-    //     input_file_splats.splats.first().unwrap()
-    // );
-
-    // let input_file_splats = Splats::from_entries(vec![
-    //     Splat::new(
-    //         Vector3::new(0.0, 0.0, 0.0),
-    //         Vector3::new(1.0, 1.0, 1.0),
-    //         Vector4::new(244, 130, 80, 220),
-    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
-    //     ),
-    //     Splat::new(
-    //         Vector3::new(0.1, 0.0, 0.0),
-    //         Vector3::new(1.0, 1.0, 1.0),
-    //         Vector4::new(200, 22, 1, 123),
-    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
-    //     ),
-    //     Splat::new(
-    //         Vector3::new(0.0, 0.1, 0.0),
-    //         Vector3::new(1.0, 1.0, 1.0),
-    //         Vector4::new(200, 255, 255, 22),
-    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
-    //     ),
-    //     Splat::new(
-    //         Vector3::new(0.0, 0.0, 0.1),
-    //         Vector3::new(1.0, 1.0, 1.0),
-    //         Vector4::new(22, 255, 255, 90),
-    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
-    //     ),
-    //     Splat::new(
-    //         Vector3::new(0.0, -0.1, 0.0),
-    //         Vector3::new(1.0, 1.0, 1.0),
-    //         Vector4::new(22, 2, 255, 100),
-    //         Vector4::new(0.0, 0.0, 0.0, 0.0),
-    //     ),
-    // ]);
+        })?,
+        None => get_testing_splat_scene(),
+    };
 
 
+    // Parse initial rendering parameters from the command-line parameters.
     let initial_camera_position = match cli_args.camera_position.as_ref() {
         Some(position_as_string) => Some(parse_str_as_point3(position_as_string)?),
         None => None,
@@ -189,11 +156,16 @@ fn main() -> Result<()> {
     };
 
 
+    let render_width = cli_args.render_width.unwrap_or(DEFAULT_WINDOW_WIDTH);
+    let render_height = cli_args.render_height.unwrap_or(DEFAULT_WINDOW_HEIGHT);
+
+
+    // Initialize the splat rendered and drawing manager.
     let splat_renderer = SplatRenderer::new(
         configuration,
-        WINDOW_WIDTH,
-        WINDOW_HEIGHT,
-        input_file_splats,
+        render_width,
+        render_height,
+        splat_data,
         cli_args.splat_scaling_factor,
         initial_camera_position,
         initial_camera_look_target,
@@ -202,10 +174,28 @@ fn main() -> Result<()> {
 
     splat_renderer.render_in_place();
 
-    let drawing_manager = WindowDrawingManager::new(splat_renderer)
-        .wrap_err("Failed to initialize WindowDrawingManager.")?;
 
-    drawing_manager.run()?;
+    #[cfg(feature = "ui")]
+    {
+        if cli_args.export_screenshot_and_exit {
+            splat_renderer.save_screenshot_to_disk();
+        } else {
+            use crate::drawing::WindowManager;
+
+            let drawing_manager = WindowManager::new(render_width, render_height, splat_renderer)
+                .wrap_err("Failed to initialize window manager.")?;
+
+            drawing_manager.run()?;
+        }
+    }
+
+    #[cfg(not(feature = "ui"))]
+    {
+        // Since all graphical window dependencies are not present,
+        // just save a screenshot to disk and exit.
+        splat_renderer.save_screenshot_to_disk();
+    }
+
 
 
     drop(logging_raii_guard);

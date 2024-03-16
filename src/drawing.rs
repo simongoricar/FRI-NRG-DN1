@@ -9,35 +9,48 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::{renderer::PixelSurfaceRenderer, WINDOW_HEIGHT, WINDOW_WIDTH};
+use crate::renderer::{InteractiveRenderer, PixelSurfaceRenderer};
 
 
-enum InputAction {
+/// A high-level action to perform inside the render loop.
+///
+/// This enum is returned from [`handle_keyboard_input`] to
+/// indicate the user requesting the program to stop, for example.
+enum Action {
     Nothing,
     Quit,
 }
 
 
-fn handle_keyboard_input(event: &KeyEvent) -> Result<InputAction> {
-    trace!("Got keyboard input event: {:?}", event);
+/// Handles the [`KeyEvent`] on the window.
+///
+/// # Shortcuts
+/// - `q` — closes the window and quits the program.
+fn handle_keyboard_input(event: &KeyEvent) -> Result<Action> {
+    trace!("Keyboard input event: {:?}", event);
 
     let Key::Character(input_key) = &event.logical_key else {
-        return Ok(InputAction::Nothing);
+        return Ok(Action::Nothing);
     };
 
 
     if input_key == "q" {
         info!("User pressed q, quitting.");
-        return Ok(InputAction::Quit);
+        return Ok(Action::Quit);
     }
 
 
-    Ok(InputAction::Nothing)
+    Ok(Action::Nothing)
 }
 
+/// Handles the [`WindowEvent::RedrawRequested`] on the window.
+///
+/// Given a [`Pixels`] surface and a surface renderer, this function
+/// has the renderer draw pixels on the surface and, finally,
+/// output them to the `winit` window.
 fn handle_redraw_request<R>(surface: &mut Pixels, renderer: &R) -> Result<()>
 where
-    R: PixelSurfaceRenderer,
+    R: PixelSurfaceRenderer + InteractiveRenderer,
 {
     renderer.draw(surface.frame_mut());
 
@@ -48,32 +61,41 @@ where
 }
 
 
-pub struct WindowDrawingManager<R>
+/// A graphical window manager.
+///  Takes care of window initialization and its render loop.
+pub struct WindowManager<R>
 where
-    R: PixelSurfaceRenderer,
+    R: PixelSurfaceRenderer + InteractiveRenderer,
 {
+    /// [`winit`] event loop.
     event_loop: EventLoop<()>,
 
+    /// [`winit`] Window.
     window: Window,
 
+    /// Pixel surface provided by [`pixels`] that is displayed on the window.
     window_surface: Pixels,
 
+    /// A surface renderer implementation (generic).
     renderer: R,
 }
 
-impl<R> WindowDrawingManager<R>
+
+impl<R> WindowManager<R>
 where
-    R: PixelSurfaceRenderer,
+    R: PixelSurfaceRenderer + InteractiveRenderer,
 {
-    pub fn new(renderer: R) -> Result<Self> {
-        let event_loop = EventLoop::new()
+    /// Initialize a new window. THe render loop will not be automatically
+    /// executed, run [`Self::run`] afterwards.
+    pub fn new(render_width: u32, render_height: u32, renderer: R) -> Result<Self> {
+        let event_loop: EventLoop<()> = EventLoop::new()
             .into_diagnostic()
             .wrap_err("Failed to initialize winit event loop.")?;
 
         event_loop.set_control_flow(ControlFlow::Wait);
 
         let window = {
-            let logical_window_size = LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+            let logical_window_size = LogicalSize::new(render_width, render_height);
 
             WindowBuilder::new()
                 .with_inner_size(logical_window_size)
@@ -91,7 +113,7 @@ where
             let surface_texture =
                 SurfaceTexture::new(window_size.width, window_size.height, &window);
 
-            Pixels::new(WINDOW_WIDTH, WINDOW_HEIGHT, surface_texture)
+            Pixels::new(render_width, render_height, surface_texture)
                 .into_diagnostic()
                 .wrap_err("Failed to initialize pixel surface.")?
         };
@@ -105,12 +127,20 @@ where
         })
     }
 
+    /// A blocking function that consumes the window manager and runs the window
+    /// render loop as long as required (e.g. until the user presses "q").
     pub fn run(mut self) -> Result<()> {
         self.event_loop
             .run(move |event, target| {
+                // Ignore non-window-related events.
+
                 let Event::WindowEvent { event, .. } = event else {
                     return;
                 };
+
+
+                // Handle redraw requests and keyboard input.
+                // The renderer may also provide its own `handle_window_event`.
 
                 if event == WindowEvent::RedrawRequested {
                     let render_result =
@@ -124,8 +154,8 @@ where
 
                     match input_result {
                         Ok(action) => match action {
-                            InputAction::Nothing => (),
-                            InputAction::Quit => {
+                            Action::Nothing => (),
+                            Action::Quit => {
                                 target.exit();
                                 return;
                             }
