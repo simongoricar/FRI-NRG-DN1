@@ -4,7 +4,7 @@ use bytes::{Buf, Bytes};
 use miette::{miette, Context, IntoDiagnostic, Result};
 use nalgebra::{Vector3, Vector4};
 use rayon::iter::{ParallelBridge, ParallelIterator};
-use tracing::trace;
+use tracing::debug;
 
 use crate::REORDER_SPLATS_TO_FILE_ORDER;
 
@@ -134,7 +134,7 @@ impl Splats {
         }
 
 
-        trace!(
+        debug!(
             "Reading the input file took {} milliseconds.",
             time_before_file_read.elapsed().as_secs_f64() * 1000f64
         );
@@ -154,7 +154,7 @@ impl Splats {
                 .collect::<Result<Vec<_>>>()?;
 
 
-            trace!(
+            debug!(
                 "Parsing splats from raw data took {} milliseconds.",
                 time_before_splats_parse.elapsed().as_secs_f64() * 1000f64
             );
@@ -170,7 +170,7 @@ impl Splats {
                 .collect::<Vec<_>>();
 
 
-            trace!(
+            debug!(
                 "Reordering splats to the original file order took {} milliseconds.",
                 time_before_splats_reordered.elapsed().as_secs_f64() * 1000f64
             );
@@ -183,7 +183,7 @@ impl Splats {
                 .map(|chunk| Splat::from_raw_splat_file_data(Bytes::copy_from_slice(chunk)))
                 .collect::<Result<Vec<_>>>()?;
 
-            trace!(
+            debug!(
                 "Parsing splats from raw data took {} milliseconds.",
                 time_before_splats_parse.elapsed().as_secs_f64() * 1000f64
             );
