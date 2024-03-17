@@ -40,7 +40,7 @@ Izhodna datoteka se bo nahajala v mapi `target/release` in bo nosila ime `nrg-dn
 ## 3. Zagon programa
 Program je bil v predhodnih korakih preveden, konfiguracijske datoteke pripravljene ter vhodne datoteke prenesene na primerno mesto.
 
-Kar preostane je le še zagon, kar lahkostorimo s sledečim ukazom (v primeru, da imamo vhodno datoteko v mapi `data/input-files`):
+Kar preostane je le še zagon, kar lahko storimo s sledečim ukazom (v primeru, da imamo vhodno datoteko v mapi `data/input-files`):
 
 ```bash
 ./target/release/nrg-dn1 --input-file-path ./data/input-files/nike.splat --camera-position "(2.1,-0.06,-0.04)"
