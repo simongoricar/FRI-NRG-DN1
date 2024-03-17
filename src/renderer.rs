@@ -316,9 +316,8 @@ impl SplatRenderer {
     }
 
     pub fn render_in_place(&self) {
-        info!("Rendering splat.");
-
         let mut inner_locked = self.inner.write();
+
 
         // Transform the world coordinates of each splat to camera coordinates.
 
@@ -335,22 +334,20 @@ impl SplatRenderer {
         inner_locked.side_vector = updated_side_vector;
         inner_locked.up_vector = updated_up_vector;
 
-
-        // let look_at_matrix = Matrix4::<f32>::look_at_lh(
-        //     &inner_locked.camera_position,
-        //     &inner_locked.camera_look_target,
-        //     &updated_up_vector,
-        // );
-
         debug!(
-            "Camera position: {:?}\nCamera look target: {:?}\n\
-            Forward vector: {:?}\nSide vector: {:?}\nUp vector: {:?}",
+            "Performing render. Context:\n \
+             -> camera position: {:?}\n \
+             -> camera look target: {:?}\n \
+             -> forward vector: {:?}\n \
+             -> side vector: {:?}\n \
+             -> up vector: {:?}",
             inner_locked.camera_position,
             inner_locked.camera_look_target,
             updated_forward_vector,
             updated_side_vector,
             updated_up_vector
         );
+
 
         let look_at_matrix = Matrix4::<f32>::look_at_rh(
             &inner_locked.camera_position,
@@ -367,14 +364,7 @@ impl SplatRenderer {
         );
 
 
-        debug!("Look at matrix:\n{:?}", look_at_matrix);
-        debug!(
-            "Projection matrix:\n{:?}",
-            projection_matrix.as_matrix()
-        );
-
-
-        // let joint_matrix = projection_matrix.as_matrix() * look_at_matrix;
+        let joint_matrix = projection_matrix.as_matrix() * look_at_matrix;
 
 
         // Project splats to camera space and order them back to front.
@@ -408,29 +398,17 @@ impl SplatRenderer {
                     1f32,
                 );
 
-                // println!(
-                //     "Projecting splat at position {:?}",
-                //     splat.position
-                // );
+                // let position_in_camera_space = look_at_matrix * position_in_world_space;
+                // let position_in_clip_space =
+                //     projection_matrix.as_matrix() * position_in_camera_space;
 
-                let position_in_camera_space = look_at_matrix * position_in_world_space;
-                let position_in_clip_space =
-                    projection_matrix.as_matrix() * position_in_camera_space;
-
-                // let position_in_clip_space = joint_matrix * position_in_world_space;
+                let position_in_clip_space = joint_matrix * position_in_world_space;
 
 
                 let distance_from_camera = get_splat_distance_from_camera(&position_in_clip_space);
                 let billboard_size =
                     (2.0 * self.splat_scaling_factor / distance_from_camera).round() as u32;
 
-
-                // println!(
-                //     " -> in camera space: {:?}\n -> in clip space: {:?}\n -> distance from camera: {}",
-                //     position_in_camera_space,
-                //     position_in_clip_space,
-                //     distance_from_camera
-                // );
 
                 if let Some((render_center_x, render_center_y)) =
                     get_pixel_coordinates_from_projected_coordinates(
@@ -439,11 +417,6 @@ impl SplatRenderer {
                         self.render_height,
                     )
                 {
-                    // println!(
-                    //     "Splat is in the viewport at center {}x{} (has billboard size {}).",
-                    //     render_center_x, render_center_y, billboard_size
-                    // );
-
                     Some(PreparedSplat {
                         distance_from_camera,
                         center_pixel_in_viewport: (render_center_x, render_center_y),
@@ -453,15 +426,13 @@ impl SplatRenderer {
                         rotation: splat.rotation,
                     })
                 } else {
-                    // println!("Splat is not in the viewport.");
-
                     None
                 }
             })
             .collect::<Vec<_>>();
 
         debug!(
-            "Preparing splats took {} milliseconds.",
+            "Preparing splats (projection + viewport filtering + distance calculation) took {} milliseconds.",
             (time_prepare_splats_start.elapsed().as_secs_f64() * 1000.0).round() as u32
         );
 
